@@ -2,15 +2,22 @@
 # nastya-rest — Expense Tracking REST API
 
 This repository contains a small educational REST API built with **Node.js** and **Express**.
-It is used for a series of university labs on backend development:
+It is used for a series of university labs on backend development.
+
+- **Student group**: IO-35
+- **Variant rule**: variant = groupNumber % 3
+- **Group number**: 35 ⇒ **35 % 3 = 2**
+- **Variant 2**: **"user-specific expense categories"** (custom categories per user)
+
+Currently the project implements:
 
 - **Lab 1** – Basic HTTP server + health-check endpoint
-- **Lab 2** – In‑memory REST API for tracking expenses (users, categories, records)
-- **Lab 3** – (Planned) Persistence with a real database and ORM
-- **Lab 4** – (Planned) Authentication and authorization
+- **Lab 2** – In-memory REST API for tracking expenses (users, categories, records)
+- **Lab 3** – Migration to PostgreSQL + Prisma ORM, input validation and error handling,
+  support for **global** and **user-specific** categories according to Variant 2.
 
-> At the moment this README and the Postman collection describe the Lab 1–2 API:
-> simple JSON endpoints without a database (data is stored in memory).
+> Lab 4 (authentication/authorization) can reuse the same API and database and add
+> JWT-based security on top of the existing endpoints.
 
 ---
 
@@ -18,32 +25,43 @@ It is used for a series of university labs on backend development:
 
 - **Node.js** 20+
 - **Express** 5
-- **dotenv** (for environment variables)
-- **nodemon** (for development)
-- **Docker** (production image using Node 20 Alpine)
+- **Prisma ORM** (PostgreSQL)
+- **Zod** (input validation)
+- **dotenv** (environment variables)
+- **nodemon** (development)
+- **Docker / Docker Compose** (PostgreSQL database and optional app container)
 
 ---
 
 ## Project structure
 
 ```text
-src/
-  app.js              # Express app configuration
-  index.js            # Application entry point
-  controllers/
-    home.controller.js
-    # (you can add more controllers here, e.g. users, categories, records)
-  routes/
-    index.js          # GET /
-    api/
-      health.js       # GET /api/health
-  middlewares/
-    errorHandler.js   # Centralized error handler
-```
+prisma/
+  schema.prisma        # Database schema (User, Category, Record)
 
-You can extend `controllers/` and `routes/` with additional files for Labs 2–4
-(for example `users.controller.js`, `categories.controller.js`, `records.controller.js`,
-and corresponding route files).
+src/
+  app.js               # Express app configuration
+  index.js             # Application entry point
+  db.js                # Prisma client instance
+  controllers/
+    users.controller.js
+    categories.controller.js
+    records.controller.js
+  routes/
+    index.js           # GET /
+    api/
+      health.js        # GET /api/health
+      users.js         # /users, /user/:id
+      categories.js    # /category
+      records.js       # /record, /record/:id
+  middlewares/
+    errorHandler.js    # Centralized error handler
+  utils/
+    AppError.js        # Simple application error class
+
+assets/                # Screenshots and additional lab artifacts
+postman/               # Postman collections and environments for labs 2–3
+```
 
 ---
 
@@ -53,7 +71,8 @@ and corresponding route files).
 
 - Node.js 20 or newer
 - npm (comes with Node.js)
-- Optional: Docker, if you want to run the app in a container
+- Docker (for PostgreSQL via docker-compose)
+- PostgreSQL client tools (optional, for manual inspection)
 
 ### 2. Install dependencies
 
@@ -63,28 +82,64 @@ npm install
 
 ### 3. Environment variables
 
-The project can be configured via a `.env` file in the root of the repository.
-
-Supported variables:
-
-```env
-PORT=3000
-NODE_ENV=development
-```
-
-- `PORT` – port for the HTTP server. Defaults to `3000` if not set.
-- `NODE_ENV` – optional environment flag (`development`, `production`, etc.).
+The project is configured via a `.env` file in the root of the repository.
 
 Example `.env`:
 
 ```env
+DATABASE_URL="postgresql://nastya:nastya@localhost:5432/nastya_rest?schema=public"
 PORT=3000
 NODE_ENV=development
 ```
 
-### 4. Run in development mode
+- `DATABASE_URL` – connection string for PostgreSQL (used by Prisma).
+- `PORT` – HTTP server port (defaults to `3000` if not set).
+- `NODE_ENV` – environment name (`development`, `production`, etc.).
 
-Uses `nodemon` for automatic restart on file changes.
+### 4. Running PostgreSQL with Docker
+
+The project includes a `docker-compose.yml` file that provisions a local PostgreSQL instance:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nastya_rest
+      POSTGRES_USER: nastya
+      POSTGRES_PASSWORD: nastya
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+```
+
+Start the database:
+
+```bash
+docker compose up -d db
+```
+
+### 5. Database migrations (Lab 3)
+
+Prisma is used as an ORM and migration tool.
+
+Initial setup and migration:
+
+```bash
+npx prisma migrate dev --name init_lab3
+npx prisma generate
+```
+
+You can inspect the data using Prisma Studio:
+
+```bash
+npx prisma studio
+```
+
+### 6. Run in development mode
+
+Uses `nodemon` for automatic restart on file changes:
 
 ```bash
 npm run dev
@@ -96,65 +151,67 @@ The server will start at:
 http://localhost:3000
 ```
 
-### 5. Run in production mode (without Docker)
+### 7. Run in production mode (without Docker for app)
 
 ```bash
 npm start
 ```
 
-By default this will also listen on `PORT` (3000 if not set).
+---
+
+## Data model (Lab 3, Variant 2)
+
+The Prisma schema defines three main models:
+
+```prisma
+model User {
+  id          Int        @id @default(autoincrement())
+  name        String
+  createdAt   DateTime   @default(now())
+
+  records     Record[]
+  categories  Category[] @relation("UserCategories")
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String
+  isCustom  Boolean   @default(false)
+
+  ownerId   Int?
+  owner     User?     @relation("UserCategories", fields: [ownerId], references: [id])
+
+  records   Record[]
+}
+
+model Record {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  categoryId Int
+  amount     Float
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+}
+```
+
+Interpretation:
+
+- `User` – a person who owns expense records.
+- `Category` – an expense category:
+  - `isCustom = false`, `ownerId = null` → **global category**, available to everyone.
+  - `isCustom = true`, `ownerId = userId` → **user-specific category**, visible only for that user.
+- `Record` – a single expense entry linked to a specific user and category.
+
+This corresponds to **Variant 2** from the lab assignment:
+user-specific expense categories on top of the global ones.
 
 ---
 
-## Running with Docker
+## API overview
 
-A simple Dockerfile is provided:
-
-```Dockerfile
-FROM node:20-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-
-RUN npm ci --omit=dev
-
-COPY src ./src
-
-ENV NODE_ENV=production
-ENV PORT=8080
-
-EXPOSE 8080
-
-CMD ["node", "src/index.js"]
-```
-
-### Build the image
-
-```bash
-docker build -t nastya-rest .
-```
-
-### Run the container
-
-```bash
-docker run --rm -p 8080:8080 nastya-rest
-```
-
-The API will then be available at:
-
-```text
-http://localhost:8080
-```
-
-If you deploy this image to a hosting platform (for example Render, Railway, etc.),
-make sure the external URL is reflected in the Postman **prod** environment.
-
----
-
-## API overview (Labs 1–2)
-
-### 1. Basic endpoints
+### 1. Basic endpoints (Lab 1)
 
 #### `GET /`
 
@@ -170,7 +227,7 @@ Example response:
 
 #### `GET /api/health`
 
-Health‑check endpoint with a timestamp.
+Health-check endpoint with a timestamp.
 
 Example response:
 
@@ -183,27 +240,20 @@ Example response:
 
 ---
 
-### 2. Planned REST resources (Lab 2)
+### 2. Core REST resources (Labs 2–3)
 
-The following resources are designed for the in‑memory expense tracking API:
-
-- **Users** – people who own expense records
-- **Categories** – types of expenses (food, transport, etc.)
-- **Records** – individual expense entries (amount + user + category)
-
-Below is the planned endpoint contract. You can implement these endpoints
-in Express controllers and routes.
+The following resources are implemented as part of Labs 2–3.
 
 #### Users
 
-| Method | URL              | Description                |
-|--------|------------------|----------------------------|
-| GET    | `/users`         | List all users             |
-| GET    | `/user/:userId`  | Get a user by id           |
-| POST   | `/user`          | Create a new user          |
-| DELETE | `/user/:userId`  | Delete a user and their records |
+| Method | URL             | Description                        |
+|--------|-----------------|------------------------------------|
+| GET    | `/users`        | List all users                     |
+| GET    | `/user/:userId` | Get a user by id                   |
+| POST   | `/user`         | Create a new user                  |
+| DELETE | `/user/:userId` | Delete a user and related data     |
 
-**Example `POST /user` request body**
+**Example `POST /user` body**
 
 ```json
 {
@@ -211,26 +261,18 @@ in Express controllers and routes.
 }
 ```
 
-**Example response**
+---
 
-```json
-{
-  "id": 1,
-  "name": "Alice"
-}
-```
+#### Categories (Variant 2: global + user-specific)
 
-----
+| Method | URL                  | Description                                               |
+|--------|----------------------|-----------------------------------------------------------|
+| GET    | `/category`          | List all categories                                      |
+| GET    | `/category?user_id=` | For a user: global + user-specific categories            |
+| POST   | `/category`          | Create global or user-specific category                  |
+| DELETE | `/category?id=...`   | Delete a category (and its records) by id (query param)  |
 
-#### Categories
-
-| Method | URL          | Description                        |
-|--------|--------------|------------------------------------|
-| GET    | `/category`  | List all categories                |
-| POST   | `/category`  | Create a new category              |
-| DELETE | `/category`  | Delete a category by `?id=` query  |
-
-**Example `POST /category` request body**
+**Creating a global category**
 
 ```json
 {
@@ -238,16 +280,37 @@ in Express controllers and routes.
 }
 ```
 
-----
+Result: `isCustom = false`, `ownerId = null`.
 
-#### Records
+**Creating a user-specific category**
 
-| Method | URL                        | Description                                            |
-|--------|----------------------------|--------------------------------------------------------|
+```json
+{
+  "name": "Gym",
+  "userId": 1
+}
+```
+
+Result: `isCustom = true`, `ownerId = 1`.
+
+**Getting categories for a user**
+
+```http
+GET /category?user_id=1
+```
+
+Returns all global categories plus categories where `ownerId = 1`.
+
+---
+
+#### Records (expense entries)
+
+| Method | URL                        | Description                                             |
+|--------|----------------------------|---------------------------------------------------------|
 | GET    | `/record`                  | List records filtered by `user_id` and/or `category_id` |
-| GET    | `/record/:recordId`        | Get a single record by id                              |
-| POST   | `/record`                  | Create a new expense record                            |
-| DELETE | `/record/:recordId`        | Delete a record                                        |
+| GET    | `/record/:recordId`        | Get a single record by id                               |
+| POST   | `/record`                  | Create a new expense record                             |
+| DELETE | `/record/:recordId`        | Delete a record                                         |
 
 **Query parameters for `GET /record`**
 
@@ -260,46 +323,51 @@ in Express controllers and routes.
 ```json
 {
   "userId": 1,
-  "categoryId": 1,
+  "categoryId": 2,
   "amount": 123.45
-}
-```
-
-**Example response**
-
-```json
-{
-  "id": 1,
-  "userId": 1,
-  "categoryId": 1,
-  "amount": 123.45,
-  "createdAt": "2025-01-01T12:34:56.789Z"
 }
 ```
 
 ---
 
-## Using the Postman collection
+## Validation and error handling (Lab 3)
 
-In the `nastya-rest.postman_collection.json` file you will find ready‑made requests
-for:
+All main POST endpoints use **Zod** schemas for input validation:
 
-- `GET /` (home)
-- `GET /api/health`
-- Users: `GET /users`, `GET /user/:userId`, `POST /user`, `DELETE /user/:userId`
-- Categories: `GET /category`, `POST /category`, `DELETE /category?id=...`
-- Records: `GET /record`, `GET /record/:recordId`, `POST /record`, `DELETE /record/:recordId`
+- `users.controller` – validates `name` when creating a user.
+- `categories.controller` – validates `name` and optional `userId` when creating a category.
+- `records.controller` – validates `userId`, `categoryId`, and `amount` when creating a record.
 
-The collection uses a single variable:
+On validation failure the API returns HTTP **400** with a JSON body:
 
-- `{{baseUrl}}` – base URL of the API.
+```json
+{
+  "error": "Validation failed",
+  "details": [ /* Zod issues */ ]
+}
+```
 
-Two Postman **environments** are provided:
+Domain errors (non-existing user, category, record) are also returned with a proper HTTP status
+(e.g. 404 for "User not found", "Category not found", "Record not found"), using the `AppError`
+helper and the centralized `errorHandler` middleware.
 
-- `nastya-rest-local` – for local development
-  - `baseUrl = http://localhost:3000`
-- `nastya-rest-prod` – for Docker / production
-  - `baseUrl = https://nastya-rest-865o.onrender.com` (or your actual deployment URL)
+---
+
+## Postman collections
+
+The `postman/` folder contains collections and environments for Labs 2–3:
+
+- Requests for:
+  - Users (`/users`, `/user/:id`, `POST /user`, `DELETE /user/:id`)
+  - Categories (`GET /category`, `GET /category?user_id=...`, `POST /category`, `DELETE /category?id=...`)
+  - Records (`GET /record`, `GET /record/:id`, `POST /record`, `DELETE /record/:id`)
+- Environments:
+  - Local: `baseUrl = http://localhost:3000`
+  - Production / Docker: `baseUrl = http://localhost:8080` (or deployment URL)
+
+The collections are also used in **Postman Flows** to demonstrate filtering by user and category.
+
+---
 
 ## Using the Postman flow
 
@@ -307,18 +375,18 @@ Postman flow for Lab2:
 
 ![Lab2 flow](./assets/lab2-flow.png)
 
-### Steps
-
-1. Import the **collection** file into Postman.
-2. Import the **local** and **prod** environment files.
-3. Select the desired environment (local or prod).
-4. Send requests and inspect responses.
-
 ---
 
-## Notes
+## Notes and possible Lab 4 extensions
 
-- Since Lab 2 stores data in memory, all users, categories, and records are reset
-  every time the server restarts.
-- For Labs 3–4 you can replace the in‑memory store with a real database
-  and add authentication middleware that protects the main endpoints.
+- For Labs 1–3, the API is intentionally simple and focused on:
+  - basic REST design,
+  - in-memory store (Lab 2),
+  - database + ORM + validation + error handling (Lab 3),
+  - support for **user-specific categories** as required by Variant 2 for group 35.
+- In Lab 4 this project can be extended with:
+  - JWT-based authentication and authorization,
+  - protection of endpoints so that each user only sees and manipulates their own data,
+  - role-based access (e.g. admin vs regular user).
+
+This README summarizes the implementation details needed for lab defense and review.
