@@ -1,0 +1,527 @@
+{
+  "info": {
+    "_postman_id": "d20edf20-554e-4588-bd65-da6934bcce32",
+    "name": "nastya-rest-lab4",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for Lab 4 (authentication & authorization) of the nastya-rest project.\n\nIncludes:\n- Registration and login endpoints with JWT access token.\n- Protected endpoints for users, categories and records that require Authorization: Bearer {{token}}.\n\nUsage:\n1. Set the `baseUrl` variable in an environment (e.g. http://localhost:3000 or Render URL).\n2. Call `Auth / Register` to create a user (or `Auth / Login` for existing one).\n3. The tests on register/login will store `accessToken` into environment variable `token`.\n4. All protected requests use header: Authorization: Bearer {{token}}.\n"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"nastya\",\n  \"password\": \"secret123\"\n}"
+            },
+            "description": "Register a new user and receive an access token in response."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Save access token from register response', function () {",
+                  "  if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = {};",
+                  "    try {",
+                  "      json = pm.response.json();",
+                  "    } catch (e) {}",
+                  "    if (json && json.accessToken) {",
+                  "      pm.environment.set('token', json.accessToken);",
+                  "    }",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"nastya\",\n  \"password\": \"secret123\"\n}"
+            },
+            "description": "Login existing user and receive an access token."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Save access token from login response', function () {",
+                  "  if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = {};",
+                  "    try {",
+                  "      json = pm.response.json();",
+                  "    } catch (e) {}",
+                  "    if (json && json.accessToken) {",
+                  "      pm.environment.set('token', json.accessToken);",
+                  "    }",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get all users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Get list of all users (protected)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get user by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "1"
+              ]
+            },
+            "description": "Get one user by id (protected). Replace `1` with desired user id."
+          },
+          "response": []
+        },
+        {
+          "name": "Create user (optional, if not using /auth/register)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"anotherUser\",\n  \"password\": \"secret123\"\n}"
+            },
+            "description": "Create a new user with hashed password (protected). In Lab 4 usually /auth/register is preferred."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete user by id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "1"
+              ]
+            },
+            "description": "Delete a user by id along with its records and custom categories (protected)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Get all categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/category",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "category"
+              ]
+            },
+            "description": "Get all categories (global + custom), without filtering by user (protected)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get categories for user_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/category",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "category"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Get global categories and user-specific categories for given user_id (protected). Set `userId` variable in environment."
+          },
+          "response": []
+        },
+        {
+          "name": "Create global category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/category",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "category"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Food\"\n}"
+            },
+            "description": "Create a global category (isCustom=false)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create user-specific category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/category",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "category"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gym\",\n  \"userId\": 1\n}"
+            },
+            "description": "Create a user-specific category for a given user (isCustom=true, ownerId=userId)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete category by id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/category",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "category"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{categoryId}}"
+                }
+              ]
+            },
+            "description": "Delete a category by id (protected). Also deletes records with this category. Set `categoryId` variable in environment."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Records",
+      "item": [
+        {
+          "name": "Get records by user_id and category_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/record",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "record"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{userId}}"
+                },
+                {
+                  "key": "category_id",
+                  "value": "{{categoryId}}"
+                }
+              ]
+            },
+            "description": "Get records filtered by user_id and category_id (protected). At least one of the query params should be provided."
+          },
+          "response": []
+        },
+        {
+          "name": "Get record by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/record/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "record",
+                "1"
+              ]
+            },
+            "description": "Get a single record by id (protected). Replace `1` with desired record id."
+          },
+          "response": []
+        },
+        {
+          "name": "Create record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/record",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "record"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"categoryId\": 2,\n  \"amount\": 123.45\n}"
+            },
+            "description": "Create a new expense record for user and category (protected)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete record by id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/record/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "record",
+                "1"
+              ]
+            },
+            "description": "Delete an expense record by id (protected). Replace `1` with desired record id."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    }
+  ]
+}
