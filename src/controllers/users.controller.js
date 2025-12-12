@@ -4,17 +4,16 @@ import { AppError } from '../utils/AppError.js';
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
+  password: z.string().min(6).max(255),
 });
 
 export const usersController = {
   async list(req, res, next) {
     try {
-      const users = await prisma.user.findMany({
-        include: {
-          categories: true,
-        },
-      });
-      res.json(users);
+      const users = await prisma.user.findMany();
+
+      const safeUsers = users.map(({ password, ...u }) => u);
+      res.json(safeUsers);
     } catch (err) {
       next(err);
     }
@@ -38,7 +37,9 @@ export const usersController = {
         throw new AppError(404, 'User not found');
       }
 
-      res.json(user);
+      const { password, ...safeUser } = user;
+
+      res.json(safeUser);
     } catch (err) {
       next(err);
     }
@@ -51,13 +52,22 @@ export const usersController = {
         throw new AppError(400, 'Validation failed', parsed.error.issues);
       }
 
-      const { name } = parsed.data;
+      const { name, password } = parsed.data;
+
+      const existing = await prisma.user.findUnique({ where: { name } });
+      if (existing) {
+        throw new AppError(400, 'User with this name already exists');
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
 
       const user = await prisma.user.create({
-        data: { name },
+        data: { name, password: passwordHash },
       });
 
-      res.status(201).json(user);
+      const { password: _, ...safeUser } = user;
+
+      res.status(201).json(safeUser);
     } catch (err) {
       next(err);
     }
