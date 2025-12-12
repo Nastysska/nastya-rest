@@ -5,19 +5,18 @@ This repository contains a small educational REST API built with **Node.js** and
 It is used for a series of university labs on backend development.
 
 - **Student group**: IO-35
-- **Variant rule**: variant = groupNumber % 3
-- **Group number**: 35 ⇒ **35 % 3 = 2**
+- **Variant rule**: `variant = groupNumber % 3`
+- **Group number**: 35 ⇒ `35 % 3 = 2`
 - **Variant 2**: **"user-specific expense categories"** (custom categories per user)
 
-Currently the project implements:
+The project is implemented step‑by‑step across four labs:
 
-- **Lab 1** – Basic HTTP server + health-check endpoint
-- **Lab 2** – In-memory REST API for tracking expenses (users, categories, records)
+- **Lab 1** – Basic HTTP server + health-check endpoint.
+- **Lab 2** – In-memory REST API for tracking expenses (users, categories, records).
 - **Lab 3** – Migration to PostgreSQL + Prisma ORM, input validation and error handling,
   support for **global** and **user-specific** categories according to Variant 2.
-
-> Lab 4 (authentication/authorization) can reuse the same API and database and add
-> JWT-based security on top of the existing endpoints.
+- **Lab 4** – Authentication and authorization:
+  password hashing, JWT-based access tokens, and protection of all business endpoints.
 
 ---
 
@@ -27,6 +26,8 @@ Currently the project implements:
 - **Express** 5
 - **Prisma ORM** (PostgreSQL)
 - **Zod** (input validation)
+- **bcryptjs** (password hashing)
+- **jsonwebtoken** (JWT access tokens)
 - **dotenv** (environment variables)
 - **nodemon** (development)
 - **Docker / Docker Compose** (PostgreSQL database and optional app container)
@@ -37,30 +38,34 @@ Currently the project implements:
 
 ```text
 prisma/
-  schema.prisma        # Database schema (User, Category, Record)
+  schema.prisma                # Database schema (User, Category, Record)
+  migrations/                  # Migrations for Labs 3–4
 
 src/
-  app.js               # Express app configuration
-  index.js             # Application entry point
-  db.js                # Prisma client instance
+  app.js                       # Express app configuration
+  index.js                     # Application entry point
+  db.js                        # Prisma client instance
   controllers/
-    users.controller.js
-    categories.controller.js
-    records.controller.js
+    auth.controller.js         # Registration and login (Lab 4)
+    users.controller.js        # Users CRUD (protected in Lab 4)
+    categories.controller.js   # Categories API (global + user-specific)
+    records.controller.js      # Expense records API
   routes/
-    index.js           # GET /
+    index.js                   # GET /
     api/
-      health.js        # GET /api/health
-      users.js         # /users, /user/:id
-      categories.js    # /category
-      records.js       # /record, /record/:id
+      health.js                # GET /api/health
+      auth.js                  # /auth/register, /auth/login
+      users.js                 # /users, /user/:id
+      categories.js            # /category, /category?user_id=...
+      records.js               # /record, /record/:id
   middlewares/
-    errorHandler.js    # Centralized error handler
+    auth.js                    # JWT verification and protected routes (Lab 4)
+    errorHandler.js            # Centralized error handler
   utils/
-    AppError.js        # Simple application error class
+    AppError.js                # Simple application error class
 
-assets/                # Screenshots and additional lab artifacts
-postman/               # Postman collections and environments for labs 2–3
+assets/                        # Screenshots and additional lab artifacts
+postman/                       # Postman collections and environments for labs 2–4
 ```
 
 ---
@@ -90,11 +95,15 @@ Example `.env`:
 DATABASE_URL="postgresql://nastya:nastya@localhost:5432/nastya_rest?schema=public"
 PORT=3000
 NODE_ENV=development
+JWT_SECRET="super_secret_jwt_key_change_me"
+JWT_EXPIRES_IN="1h"
 ```
 
 - `DATABASE_URL` – connection string for PostgreSQL (used by Prisma).
 - `PORT` – HTTP server port (defaults to `3000` if not set).
 - `NODE_ENV` – environment name (`development`, `production`, etc.).
+- `JWT_SECRET` – secret key used to sign JWT access tokens.
+- `JWT_EXPIRES_IN` – token lifetime (e.g. `1h`, `15m`).
 
 ### 4. Running PostgreSQL with Docker
 
@@ -120,14 +129,17 @@ Start the database:
 docker compose up -d db
 ```
 
-### 5. Database migrations (Lab 3)
+### 5. Database migrations (Labs 3–4)
 
 Prisma is used as an ORM and migration tool.
 
-Initial setup and migration:
+Initial setup and migrations in development:
 
 ```bash
-npx prisma migrate dev --name init_lab3
+# apply all pending migrations to the local database
+npx prisma migrate dev
+
+# generate Prisma Client
 npx prisma generate
 ```
 
@@ -166,7 +178,8 @@ The Prisma schema defines three main models:
 ```prisma
 model User {
   id          Int        @id @default(autoincrement())
-  name        String
+  name        String     @unique
+  password    String
   createdAt   DateTime   @default(now())
 
   records     Record[]
@@ -238,26 +251,142 @@ Example response:
 }
 ```
 
+These endpoints are public and do not require authentication.
+
 ---
 
-### 2. Core REST resources (Labs 2–3)
+### 2. Authentication & authorization (Lab 4)
 
-The following resources are implemented as part of Labs 2–3.
+Lab 4 introduces password hashing and JWT-based authorization. Users authenticate via
+`/auth/register` and `/auth/login`, and all business endpoints are protected by a JWT
+middleware.
+
+#### Registration
+
+- **Method**: `POST`
+- **URL**: `/auth/register`
+- **Body**:
+
+  ```json
+  {
+    "name": "nastya",
+    "password": "secret123"
+  }
+  ```
+
+- **Behavior**:
+  - Validates input using Zod.
+  - Checks that there is no existing user with the same `name`.
+  - Hashes the password using `bcryptjs`.
+  - Creates a new `User` record in the database.
+  - Returns sanitized user data and an access token.
+
+- **Example response**:
+
+  ```json
+  {
+    "user": {
+      "id": 1,
+      "name": "nastya",
+      "createdAt": "2025-01-01T12:00:00.000Z"
+    },
+    "accessToken": "<JWT token>"
+  }
+  ```
+
+#### Login
+
+- **Method**: `POST`
+- **URL**: `/auth/login`
+- **Body**:
+
+  ```json
+  {
+    "name": "nastya",
+    "password": "secret123"
+  }
+  ```
+
+- **Behavior**:
+  - Validates input with Zod.
+  - Finds user by `name`.
+  - Compares the provided password with the stored hash using `bcryptjs`.
+  - If credentials are valid, returns an access token.
+
+- **Example response**:
+
+  ```json
+  {
+    "accessToken": "<JWT token>"
+  }
+  ```
+
+#### JWT protection
+
+- All routes except:
+  - `GET /`
+  - `GET /api/health`
+  - `POST /auth/register`
+  - `POST /auth/login`
+  are protected by the `authMiddleware`.
+
+- The middleware expects the header:
+
+  ```http
+  Authorization: Bearer <token>
+  ```
+
+- On missing, expired or invalid token the API returns HTTP **401** with JSON similar to:
+
+  ```json
+  {
+    "description": "Request does not contain an access token.",
+    "error": "authorization_required"
+  }
+  ```
+
+  or
+
+  ```json
+  {
+    "message": "The token has expired.",
+    "error": "token_expired"
+  }
+  ```
+
+  or
+
+  ```json
+  {
+    "message": "Signature verification failed.",
+    "error": "invalid_token"
+  }
+  ```
+
+This mirrors the logic required by the lab specification.
+
+---
+
+### 3. Core REST resources (Labs 2–4)
+
+The following resources are implemented as part of Labs 2–4 and, starting from Lab 4,
+require a valid JWT access token (except for public endpoints listed above).
 
 #### Users
 
-| Method | URL             | Description                        |
-|--------|-----------------|------------------------------------|
-| GET    | `/users`        | List all users                     |
-| GET    | `/user/:userId` | Get a user by id                   |
-| POST   | `/user`         | Create a new user                  |
-| DELETE | `/user/:userId` | Delete a user and related data     |
+| Method | URL             | Description                                              |
+|--------|-----------------|----------------------------------------------------------|
+| GET    | `/users`        | List all users (password is never returned)             |
+| GET    | `/user/:userId` | Get a user by id, including their categories            |
+| POST   | `/user`         | Create a new user (optional if `/auth/register` is used)|
+| DELETE | `/user/:userId` | Delete a user and related records/custom categories     |
 
-**Example `POST /user` body**
+**Example `POST /user` body (optional)**
 
 ```json
 {
-  "name": "Alice"
+  "name": "alice",
+  "password": "secret123"
 }
 ```
 
@@ -330,11 +459,12 @@ Returns all global categories plus categories where `ownerId = 1`.
 
 ---
 
-## Validation and error handling (Lab 3)
+## Validation and error handling
 
 All main POST endpoints use **Zod** schemas for input validation:
 
-- `users.controller` – validates `name` when creating a user.
+- `auth.controller` – validates `name` and `password` on registration and login.
+- `users.controller` – validates `name` and `password` when creating a user.
 - `categories.controller` – validates `name` and optional `userId` when creating a category.
 - `records.controller` – validates `userId`, `categoryId`, and `amount` when creating a record.
 
@@ -353,19 +483,26 @@ helper and the centralized `errorHandler` middleware.
 
 ---
 
-## Postman collections
+## Postman collections (Labs 2–4)
 
-The `postman/` folder contains collections and environments for Labs 2–3:
+The `postman/` folder contains collections and environments for the labs:
 
-- Requests for:
-  - Users (`/users`, `/user/:id`, `POST /user`, `DELETE /user/:id`)
-  - Categories (`GET /category`, `GET /category?user_id=...`, `POST /category`, `DELETE /category?id=...`)
-  - Records (`GET /record`, `GET /record/:id`, `POST /record`, `DELETE /record/:id`)
-- Environments:
-  - Local: `baseUrl = http://localhost:3000`
-  - Production / Docker: `baseUrl = http://localhost:8080` (or deployment URL)
+- **Lab 2–3** collections:
+  - Requests for:
+    - Users (`/users`, `/user/:id`, `POST /user`, `DELETE /user/:id`)
+    - Categories (`GET /category`, `GET /category?user_id=...`, `POST /category`, `DELETE /category?id=...`)
+    - Records (`GET /record`, `GET /record/:id`, `POST /record`, `DELETE /record/:id`)
+  - Environments:
+    - Local: `baseUrl = http://localhost:3000`
+    - Production / Docker / Render: `baseUrl` set to deployment URL.
 
-The collections are also used in **Postman Flows** to demonstrate filtering by user and category.
+- **Lab 4** collection (`nastya-rest-lab4.postman_collection.json`):
+  - Adds:
+    - `Auth / Register` (saves `accessToken` to `{{token}}` in environment).
+    - `Auth / Login` (also saves `accessToken` to `{{token}}`).
+  - All protected requests automatically include:
+    - `Authorization: Bearer {{token}}`.
+  - Allows to build a simple **Postman Flow**: register → login → use token for further requests.
 
 ---
 
@@ -375,18 +512,75 @@ Postman flow for Lab2:
 
 ![Lab2 flow](./assets/lab2-flow.png)
 
+Postman flow for Lab:
+
+![Lab4 flow](./assets/lab4-flow.png)
+
 ---
 
-## Notes and possible Lab 4 extensions
+## Applying Prisma migrations on production (Render)
 
-- For Labs 1–3, the API is intentionally simple and focused on:
+For production (Render PostgreSQL) the same migrations from `prisma/migrations/` are applied
+using Prisma CLI. The typical flow:
+
+1. Obtain the **external database URL** from Render, for example:
+
+   ```text
+   postgresql://nastya_rest_db_user:PASSWORD@dpg-d4tj6aogjchc73d37vh0-a.frankfurt-postgres.render.com/nastya_rest_db
+   ```
+
+2. From your local machine, run:
+
+   ```bash
+   DATABASE_URL="postgresql://nastya_rest_db_user:...@dpg-d4tj6aogjchc73d37vh0-a.frankfurt-postgres.render.com/nastya_rest_db" \
+   npx prisma migrate deploy
+   ```
+
+   or, alternatively:
+
+   ```bash
+   export DATABASE_URL="postgresql://nastya_rest_db_user:...@dpg-d4tj6aogjchc73d37vh0-a.frankfurt-postgres.render.com/nastya_rest_db"
+   npx prisma migrate deploy
+   unset DATABASE_URL
+   ```
+
+   In the Prisma output you should see the production host instead of `localhost`.
+
+3. After all migrations are successfully deployed, the application on Render can use the same
+   schema as in development.
+
+You can also configure the Render **start command** to automatically apply migrations on each
+deploy, for example:
+
+```bash
+npm run migrate:deploy && npm start
+```
+
+where in `package.json`:
+
+```json
+{
+  "scripts": {
+    "migrate:deploy": "prisma migrate deploy",
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  }
+}
+```
+
+---
+
+## Notes and possible extensions
+
+- For Labs 1–4, the API is intentionally simple and focused on:
   - basic REST design,
   - in-memory store (Lab 2),
   - database + ORM + validation + error handling (Lab 3),
+  - JWT-based authentication and protection of endpoints (Lab 4),
   - support for **user-specific categories** as required by Variant 2 for group 35.
-- In Lab 4 this project can be extended with:
-  - JWT-based authentication and authorization,
-  - protection of endpoints so that each user only sees and manipulates their own data,
-  - role-based access (e.g. admin vs regular user).
+- Further extensions may include:
+  - refresh tokens and token revocation logic,
+  - role-based access control (admin vs regular user),
+  - rate limiting and request logging.
 
 This README summarizes the implementation details needed for lab defense and review.
